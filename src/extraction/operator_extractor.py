@@ -1,8 +1,7 @@
-from dataclasses import dataclass, field
+from pydantic import BaseModel, Field, ConfigDict
 
 
-@dataclass
-class Precondition:
+class Precondition(BaseModel):
     name: str
     data_type: str  # "data", "text"
     uid: str = ""
@@ -18,24 +17,24 @@ class Precondition:
         )
 
 
-@dataclass
-class Effect:
+class Effect(BaseModel):
     name: str
     format: str
     uid: str = ""
 
 
-@dataclass
-class HTNOperator:
+class HTNOperator(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     tool_id: str  # hashed id
     full_id: str
     name: str
     description: str
     version: str
     owner: str
-    categories: list[str] = field(default_factory=list)
-    preconditions: list[Precondition] = field(default_factory=list)
-    effects: list[Effect] = field(default_factory=list)
+    categories: list[str] = Field(default_factory=list)
+    preconditions: list[Precondition] = Field(default_factory=list)
+    effects: list[Effect] = Field(default_factory=list)
 
     @property
     def safe_name(self):

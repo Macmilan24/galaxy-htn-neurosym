@@ -7,7 +7,7 @@ NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "abc12345")
 GALAXY_URL = os.getenv("GALAXY_URL", "https://usegalaxy.org")
 GALAXY_API_KEY = os.getenv("GALAXY_API_KEY", "")
 
-PETTA_DIR = os.path.expanduser("~/PeTTa")
+PETTA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "PeTTa")
 PLN_DIR = os.path.join(PETTA_DIR, "repos", "PLN")
 METTA_DOMAIN_DIR = os.path.join(
     os.path.dirname(os.path.dirname(__file__)), "metta", "domain"

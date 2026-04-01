@@ -1,11 +1,10 @@
-from dataclasses import dataclass, field
+from pydantic import BaseModel, Field, ConfigDict
 import rustworkx as rx
 
 from src.config import UTILITY_CATEGORIES
 
 
-@dataclass
-class StepNode:
+class StepNode(BaseModel):
     step_uid: str
     step_id: str
     step_type: str  # "tool" "data_input"
@@ -34,30 +33,30 @@ class StepNode:
         return self.step_type == "subworkflow"
 
 
-@dataclass
-class DataFlowEdge:
+class DataFlowEdge(BaseModel):
     source_step_uid: str
     target_step_uid: str
     from_output_name: str
     input_name: str
 
 
-@dataclass
-class HTNMethod:
+class HTNMethod(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     workflow_id: str
     workflow_name: str
     workflow_repository: str
     category: str
     task_type: str  # from tool categories
 
-    steps: list[StepNode] = field(default_factory=list)
-    edges: list[DataFlowEdge] = field(default_factory=list)
+    steps: list[StepNode] = Field(default_factory=list)
+    edges: list[DataFlowEdge] = Field(default_factory=list)
 
-    tool_steps: list[StepNode] = field(default_factory=list)
-    input_steps: list[StepNode] = field(default_factory=list)
+    tool_steps: list[StepNode] = Field(default_factory=list)
+    input_steps: list[StepNode] = Field(default_factory=list)
 
-    topological_order: list[str] = field(default_factory=list)
-    parallel_groups: list[list[str]] = field(default_factory=list)
+    topological_order: list[str] = Field(default_factory=list)
+    parallel_groups: list[list[str]] = Field(default_factory=list)
     has_parallel_branches: bool = False
 
     @property

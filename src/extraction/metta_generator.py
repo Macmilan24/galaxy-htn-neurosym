@@ -1,0 +1,243 @@
+import os
+from pathlib import Path
+
+
+class MeTTaGenerator:
+    def __init__(self, output_dir):
+        self.output_dir = Path(output_dir)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+
+    def _safe_name(self, name: str) -> str:
+        return (
+            name.replace(" ", "_")
+            .replace("/", "_")
+            .replace("-", "_")
+            .replace("(", "")
+            .replace(")", "")
+            .replace("+", "plus")
+            .replace(".", "_")
+            .replace(":", "_")
+            .replace(",", "")
+            .replace("'", "")
+            .replace('"', "")
+            .replace("!", "")
+            .replace("?", "")
+            .replace("[", "")
+            .replace("]", "")
+            .replace("@", "at")
+            .replace("#", "num")
+            .replace("&", "and")
+            .replace("*", "star")
+        )
+
+    def generate_tool_atoms(self, operators: list) -> str:
+        lines = [
+            "; ============================================",
+            "; Tool atoms with initial TruthValues",
+            "; Auto-generated from Neo4j Knowledge Graph",
+            "; ============================================",
+            "",
+        ]
+
+        # Count how many workflows each tool appears in
+        seen_names = set()
+
+        for op in operators:
+            safe = self._safe_name(op.name)
+            if not safe or safe in seen_names:
+                continue
+            seen_names.add(safe)
+
+            has_outputs = (
+                len(op.data_outputs) > 0 if hasattr(op, "data_outputs") else True
+            )
+            # use mock stv
+            # TODO: find a good way to calculate this stv values
+            strength = 0.7 if has_outputs else 0.5
+            confidence = 0.3
+
+            lines.append(
+                f"(= (tool-quality {safe}) (STV {strength:.2f} {confidence:.2f}))"
+            )
+
+        lines.append("")
+        lines.append(f"; Total tools: {len(seen_names)}")
+
+        content = "\n".join(lines)
+        self._write_file("tool_atoms.metta", content)
+        return content
+
+    def generate_method_sets(self, method_sets: list) -> str:
+        lines = [
+            "; ============================================",
+            "; HTN Method Sets: alternative workflows for each task type",
+            "; PLN selects the best method based on tool TruthValues",
+            "; Auto-generated from Neo4j Knowledge Graph",
+            "; ============================================",
+            "",
+        ]
+
+        for ms in method_sets:
+            if not ms.methods:
+                continue
+
+            task_safe = self._safe_name(ms.task_type)
+            lines.append(
+                f"; ---- Task: {ms.task_type} ({ms.num_alternatives} alternatives) ----"
+            )
+            lines.append("")
+
+            for i, method in enumerate(ms.methods):
+                method_name = self._safe_name(method.workflow_name or f"method_{i}")
+
+                tool_names = [
+                    self._safe_name(s.tool_name) for s in method.subtasks if s.tool_name
+                ]
+                if not tool_names:
+                    continue
+
+                tool_list = " ".join(tool_names)
+                # Method declaration: this method achieves this task type
+                lines.append(f"(= (method-for {task_safe} {method_name})")
+                lines.append(f"   (MethodSequence ({tool_list})))")
+                lines.append("")
+
+                for tool_safe in tool_names:
+                    lines.append(f"(MethodUsesTool {method_name} {tool_safe})")
+
+                for subtask in method.subtasks:
+                    tool_safe = (
+                        self._safe_name(subtask.tool_name)
+                        if subtask.tool_name
+                        else None
+                    )
+                    if not tool_safe:
+                        continue
+
+                    for input_port, var_name in subtask.inputs.items():
+                        port_safe = self._safe_name(input_port)
+                        lines.append(
+                            f"(MethodDataFlow {method_name} {tool_safe} input {port_safe} {var_name})"
+                        )
+                    for output_port, var_name in subtask.outputs.items():
+                        port_safe = self._safe_name(output_port)
+                        lines.append(
+                            f"(MethodDataFlow {method_name} {tool_safe} output {port_safe} {var_name})"
+                        )
+                lines.append("")
+            lines.append("")
+
+        content = "\n".join(lines)
+        self._write_file("method_sets.metta", content)
+        return content
+
+    def generate_type_hierarchy(self) -> str:
+        lines = [
+            "; ============================================",
+            "; EDAM-aligned type hierarchy for PLN verification",
+            "; PLN Deduction rule chains these Inheritance links",
+            "; ============================================",
+            "",
+            "; --- Sequence data formats ---",
+            "(Inheritance fastqsanger FASTQ)",
+            "(Inheritance fastqillumina FASTQ)",
+            "(Inheritance fastqsolexa FASTQ)",
+            "(Inheritance fastq_gz FASTQ)",
+            "(Inheritance FASTQ SequenceData)",
+            "(Inheritance FASTA SequenceData)",
+            "(Inheritance fasta_gz FASTA)",
+            "(Inheritance SequenceData BioinformaticsData)",
+            "",
+            "; --- Alignment data formats ---",
+            "(Inheritance BAM AlignmentData)",
+            "(Inheritance SAM AlignmentData)",
+            "(Inheritance CRAM AlignmentData)",
+            "(Inheritance AlignmentData BioinformaticsData)",
+            "",
+            "; --- Variant data formats ---",
+            "(Inheritance VCF VariantData)",
+            "(Inheritance BCF VariantData)",
+            "(Inheritance VariantData BioinformaticsData)",
+            "",
+            "; --- Genomic interval formats ---",
+            "(Inheritance BED GenomicInterval)",
+            "(Inheritance GFF GenomicInterval)",
+            "(Inheritance GFF3 GFF)",
+            "(Inheritance GTF GFF)",
+            "(Inheritance GenomicInterval BioinformaticsData)",
+            "",
+            "; --- Annotation formats ---",
+            "(Inheritance GFF AnnotationData)",
+            "(Inheritance GFF3 AnnotationData)",
+            "(Inheritance AnnotationData BioinformaticsData)",
+            "",
+            "; --- Tabular and report formats ---",
+            "(Inheritance tabular TabularData)",
+            "(Inheritance csv TabularData)",
+            "(Inheritance tsv TabularData)",
+            "(Inheritance TabularData Data)",
+            "(Inheritance html ReportData)",
+            "(Inheritance json ReportData)",
+            "(Inheritance pdf ReportData)",
+            "(Inheritance txt TextData)",
+            "(Inheritance ReportData Data)",
+            "(Inheritance TextData Data)",
+            "",
+            "; --- Top-level ---",
+            "(Inheritance BioinformaticsData Data)",
+            "",
+            "; --- Format aliases (Galaxy uses these) ---",
+            "(Inheritance data Data)",
+            "(Inheritance auto Data)",
+            "(Inheritance input Data)",
+        ]
+
+        content = "\n".join(lines)
+        self._write_file("galaxy_types.metta", content)
+        return content
+
+    def generate_tool_categories(self, operators: list) -> str:
+
+        lines = [
+            "; ============================================",
+            "; Tool category membership (from HAS_TOOL edges)",
+            "; Tools in the same category can potentially substitute",
+            "; for each other within a compound subtask",
+            "; ============================================",
+            "",
+        ]
+
+        # Group by category for readability
+        category_tools = {}
+        seen = set()
+
+        for op in operators:
+            safe_tool = self._safe_name(op.name)
+            if not safe_tool or safe_tool in seen:
+                continue
+            seen.add(safe_tool)
+
+            for cat in op.categories:
+                if not cat:
+                    continue
+                safe_cat = self._safe_name(cat)
+                if safe_cat not in category_tools:
+                    category_tools[safe_cat] = []
+                category_tools[safe_cat].append(safe_tool)
+
+        for cat, tools in sorted(category_tools.items()):
+            lines.append(f"; --- {cat} ({len(tools)} tools) ---")
+            for tool in sorted(set(tools)):
+                lines.append(f"(Member {tool} {cat})")
+            lines.append("")
+
+        content = "\n".join(lines)
+        self._write_file("tool_categories.metta", content)
+        return content
+
+    def _write_file(self, filename: str, content: str):
+        """Write content to a file in the output directory."""
+        filepath = self.output_dir / filename
+        with open(filepath, "w") as f:
+            f.write(content)
+        print(f"  Written: {filepath} ({len(content)} bytes)")
